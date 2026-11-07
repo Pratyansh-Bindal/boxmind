@@ -217,7 +217,10 @@ class App:
         else:
             self.candidate_offset = min(self.candidate_max, max(0, self.candidate_offset - 2 * amount))
 
-    def draw(self, pointer: tuple[int, int]) -> None:
+    def draw(self, pointer: tuple[int, int], *, render_size: tuple[int, int] | None = None) -> None:
+        if render_size is not None and self.canvas.get_size() != render_size:
+            self.canvas = pg.Surface(render_size)
+            self.p.resize(self.canvas)
         p = self.p
         p.pointer = pointer if self.setup is None else (-1, -1)
         p.hits.clear()
@@ -238,8 +241,8 @@ class App:
 
     def _sidebar(self) -> None:
         p = self.p
-        pg.draw.rect(self.canvas, SIDEBAR, (0, 0, 208, SIZE[1]))
-        pg.draw.line(self.canvas, LINE, (207, 0), (207, SIZE[1]))
+        p.panel(pg.Rect(0, 0, 208, SIZE[1]), SIDEBAR, None, radius=0)
+        p.line(LINE, (207, 0), (207, SIZE[1]))
         p.panel(pg.Rect(23, 27, 37, 37), MINT, None, radius=10)
         p.symbol("board", 41, 45, INK)
         p.text("BoxMind", 72, 23, 25, bold=True)
@@ -261,7 +264,7 @@ class App:
             p.hits.append(Hit(rect, lambda value=page: setattr(self, "page", value)))
 
         p.panel(pg.Rect(18, 346, 172, 159), WELL, LINE, radius=11)
-        pg.draw.circle(self.canvas, MINT, (34, 369), 3)
+        p.circle(MINT, (34, 369), 3)
         p.label("Local session", 45, 362, MINT)
         p.divider(32, 176, 390)
         cfg = self.game.config
@@ -519,7 +522,7 @@ class App:
 
     def _draw_setup(self, setup: MatchSetup) -> None:
         p = self.p
-        overlay = pg.Surface(SIZE, pg.SRCALPHA)
+        overlay = pg.Surface(self.canvas.get_size(), pg.SRCALPHA)
         overlay.fill((4, 8, 14, 191))
         self.canvas.blit(overlay, (0, 0))
         p.panel(pg.Rect(350, 106, 560, 628), CARD, "#485b77", radius=17)
@@ -588,8 +591,8 @@ class App:
             p.text(detail, 444, y + 14, 15)
 
 
-def _viewport(window: pg.Surface) -> pg.Rect:
-    width, height = window.get_size()
+def _viewport(size: tuple[int, int]) -> pg.Rect:
+    width, height = size
     scale = min(width / SIZE[0], height / SIZE[1])
     scaled = (max(1, round(SIZE[0] * scale)), max(1, round(SIZE[1] * scale)))
     return pg.Rect((width - scaled[0]) // 2, (height - scaled[1]) // 2, *scaled)
@@ -606,33 +609,39 @@ def run_app(config: MatchConfig, *, randomized: bool = False) -> None:
     pg.display.init()
     pg.font.init()
     app = None
+    window = None
     try:
         desktop_width, desktop_height = pg.display.get_desktop_sizes()[0]
-        scale = min(1, max(0.4, min((desktop_width - 40) / SIZE[0], (desktop_height - 85) / SIZE[1])))
-        pg.display.set_mode(tuple(round(dimension * scale) for dimension in SIZE), pg.RESIZABLE)
-        pg.display.set_caption("BoxMind · Dots and Boxes Strategy Lab")
+        scale = min(1, max(0.4, min((desktop_width - 80) / SIZE[0], (desktop_height - 150) / SIZE[1])))
+        window = pg.Window(
+            "BoxMind · Dots and Boxes Strategy Lab",
+            size=tuple(round(dimension * scale) for dimension in SIZE),
+            position=pg.WINDOWPOS_CENTERED, resizable=True, allow_high_dpi=True,
+        )
         app = App(config, randomized=randomized)
         clock = pg.time.Clock()
         while True:
-            window = pg.display.get_surface()
-            viewport = _viewport(window)
-            app.draw(_logical(pg.mouse.get_pos(), viewport))
             for event in pg.event.get():
-                if event.type == pg.QUIT:
+                if event.type in (pg.QUIT, pg.WINDOWCLOSE):
                     return
                 if event.type == pg.KEYDOWN:
                     app.key(event.key)
                 elif event.type == pg.MOUSEBUTTONDOWN and event.button == 1:
-                    app.click(_logical(event.pos, viewport))
+                    app.click(_logical(event.pos, _viewport(window.size)))
                 elif event.type == pg.MOUSEWHEEL:
-                    app.scroll(event.y, _logical(pg.mouse.get_pos(), viewport))
-            window.fill(BG)
-            frame = app.canvas if viewport.size == SIZE else pg.transform.smoothscale(app.canvas, viewport.size)
-            window.blit(frame, viewport.topleft)
-            pg.display.flip()
+                    app.scroll(event.y, _logical(pg.mouse.get_pos(), _viewport(window.size)))
             app.update()
+            surface = window.get_surface()
+            viewport = _viewport(surface.get_size())
+            pointer = _logical(pg.mouse.get_pos(), _viewport(window.size))
+            app.draw(pointer, render_size=viewport.size)
+            surface.fill(BG)
+            surface.blit(app.canvas, viewport.topleft)
+            window.flip()
             clock.tick(60)
     finally:
         if app:
             app.close()
+        if window:
+            window.destroy()
         pg.quit()

@@ -36,17 +36,40 @@ class Hit:
 class Painter:
     def __init__(self, surface: pg.Surface):
         self.surface = surface
+        self.scale = min(surface.get_width() / SIZE[0], surface.get_height() / SIZE[1])
         self.pointer = (-1, -1)
         self.hits: list[Hit] = []
         self.fonts: dict[tuple[int, bool], pg.font.Font] = {}
+
+    def resize(self, surface: pg.Surface) -> None:
+        self.surface = surface
+        self.scale = min(surface.get_width() / SIZE[0], surface.get_height() / SIZE[1])
+        self.fonts.clear()
+
+    def point(self, point: tuple[float, float]) -> tuple[int, int]:
+        return round(point[0] * self.scale), round(point[1] * self.scale)
+
+    def pixel_rect(self, rect: pg.Rect) -> pg.Rect:
+        left, top = self.point(rect.topleft)
+        right, bottom = self.point(rect.bottomright)
+        return pg.Rect(left, top, right - left, bottom - top)
+
+    def line(self, color: str, start, end, width: int = 1) -> None:
+        pg.draw.line(self.surface, color, self.point(start), self.point(end),
+                     max(1, round(width * self.scale)))
+
+    def circle(self, color: str, center, radius: int, width: int = 0) -> None:
+        pg.draw.circle(self.surface, color, self.point(center), max(1, round(radius * self.scale)),
+                       max(1, round(width * self.scale)) if width else 0)
 
     def font(self, size: int, bold: bool = False) -> pg.font.Font:
         key = (size, bold)
         if key not in self.fonts:
             family = Path("/System/Library/Fonts") / ("Avenir Next.ttc" if bold else "Avenir.ttc")
+            pixels = max(1, round(size * self.scale))
             self.fonts[key] = (
-                pg.font.Font(family, size) if family.is_file()
-                else pg.font.SysFont(("segoeui", "dejavusans", "arial"), size, bold=bold)
+                pg.font.Font(family, pixels) if family.is_file()
+                else pg.font.SysFont(("segoeui", "dejavusans", "arial"), pixels, bold=bold)
             )
         return self.fonts[key]
 
@@ -55,21 +78,25 @@ class Painter:
         bold: bool = False, align: str = "left", max_width: int | None = None,
     ) -> pg.Rect:
         font = self.font(size, bold)
-        if max_width is not None and font.size(value)[0] > max_width:
-            while value and font.size(value + "…")[0] > max_width:
+        if max_width is not None and font.size(value)[0] > max_width * self.scale:
+            while value and font.size(value + "…")[0] > max_width * self.scale:
                 value = value[:-1]
             value += "…"
         rendered = font.render(value, True, color)
         rect = rendered.get_rect()
-        rect.y = y
+        pixel_x, pixel_y = self.point((x, y))
+        rect.y = pixel_y
         if align == "right":
-            rect.right = x
+            rect.right = pixel_x
         elif align == "center":
-            rect.centerx = x
+            rect.centerx = pixel_x
         else:
-            rect.x = x
+            rect.x = pixel_x
         self.surface.blit(rendered, rect)
-        return rect
+        return pg.Rect(
+            round(rect.x / self.scale), round(rect.y / self.scale),
+            round(rect.w / self.scale), round(rect.h / self.scale),
+        )
 
     def label(self, value: str, x: int, y: int, color: str = DIM) -> None:
         self.text(value.upper(), x, y, 11, color, bold=True)
@@ -82,7 +109,7 @@ class Painter:
         line = ""
         for word in value.split():
             candidate = f"{line} {word}".strip()
-            if line and font.size(candidate)[0] > width:
+            if line and font.size(candidate)[0] > width * self.scale:
                 self.text(line, x, y, size, color)
                 y += line_height
                 line = word
@@ -96,12 +123,14 @@ class Painter:
     def panel(
         self, rect: pg.Rect, fill: str = CARD, border: str | None = LINE, radius: int = 14
     ) -> None:
-        pg.draw.rect(self.surface, fill, rect, border_radius=radius)
+        pixels = self.pixel_rect(rect)
+        radius = round(radius * self.scale)
+        pg.draw.rect(self.surface, fill, pixels, border_radius=radius)
         if border:
-            pg.draw.rect(self.surface, border, rect, width=1, border_radius=radius)
+            pg.draw.rect(self.surface, border, pixels, width=max(1, round(self.scale)), border_radius=radius)
 
     def divider(self, x1: int, x2: int, y: int) -> None:
-        pg.draw.line(self.surface, LINE, (x1, y), (x2, y))
+        self.line(LINE, (x1, y), (x2, y))
 
     def button(
         self, rect: pg.Rect, value: str, action: Action, *, style: str = "normal",
@@ -117,14 +146,14 @@ class Painter:
         if not enabled:
             fill, border, color = WELL, LINE, DIM
         self.panel(rect, fill, border, radius=8)
-        font_height = self.font(size, True).get_height()
+        font_height = round(self.font(size, True).get_height() / self.scale)
         self.text(value, rect.centerx, rect.centery - font_height // 2, size, color,
                   bold=True, align="center", max_width=rect.width - 10)
         if enabled:
             self.hits.append(Hit(rect, action))
 
     def pill(self, value: str, right: int, y: int, fill: str = WELL, color: str = MUTED) -> None:
-        width = self.font(11, True).size(value)[0] + 18
+        width = round(self.font(11, True).size(value)[0] / self.scale) + 18
         rect = pg.Rect(right - width, y, width, 23)
         self.panel(rect, fill, None, radius=6)
         self.text(value, rect.centerx, y + 4, 11, color, bold=True, align="center")
@@ -141,20 +170,22 @@ class Painter:
 
     def symbol(self, name: str, x: int, y: int, color: str) -> None:
         if name == "play":
-            pg.draw.polygon(self.surface, color, [(x - 5, y - 8), (x + 8, y), (x - 5, y + 8)], 2)
+            points = [self.point(point) for point in ((x - 5, y - 8), (x + 8, y), (x - 5, y + 8))]
+            pg.draw.polygon(self.surface, color, points, max(1, round(2 * self.scale)))
         elif name == "lab":
             for i, height in enumerate((7, 12, 17)):
-                pg.draw.rect(self.surface, color, (x - 8 + i * 6, y + 8 - height, 4, height),
-                             border_radius=1)
+                self.panel(pg.Rect(x - 8 + i * 6, y + 8 - height, 4, height),
+                           color, None, radius=1)
         elif name == "guide":
-            pg.draw.circle(self.surface, color, (x, y), 9, 2)
-            pg.draw.circle(self.surface, color, (x, y - 4), 1)
-            pg.draw.line(self.surface, color, (x, y - 1), (x, y + 5), 2)
+            self.circle(color, (x, y), 9, 2)
+            self.circle(color, (x, y - 4), 1)
+            self.line(color, (x, y - 1), (x, y + 5), 2)
         else:
             points = [(x - 7, y - 7), (x + 7, y - 7), (x + 7, y + 7), (x - 7, y + 7)]
-            pg.draw.lines(self.surface, color, False, points, 2)
+            pg.draw.lines(self.surface, color, False, [self.point(point) for point in points],
+                          max(1, round(2 * self.scale)))
             for point in points:
-                pg.draw.circle(self.surface, color, point, 2)
+                self.circle(color, point, 2)
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,7 +229,6 @@ class BoardView:
         self, painter: Painter, state: State, *, last_edge: int | None = None,
         hover_edge: int | None = None,
     ) -> None:
-        surface = painter.surface
         for row in range(self.board.rows - 1):
             for col in range(self.board.cols - 1):
                 owner = state.box_owner(row * (self.board.cols - 1) + col)
@@ -218,10 +248,10 @@ class BoardView:
             if owner is not None or index == hover_edge:
                 color = PLAYER_COLORS[state.to_move if owner is None else owner]
                 width = 7 if index in (last_edge, hover_edge) else 5
-                pg.draw.line(surface, color, start, end, width)
+                painter.line(color, start, end, width)
                 if index == last_edge:
                     middle = ((start[0] + end[0]) // 2, (start[1] + end[1]) // 2)
-                    pg.draw.circle(surface, TEXT, middle, 3)
+                    painter.circle(TEXT, middle, 3)
             else:
                 length = end[0] - start[0] if edge.axis == "h" else end[1] - start[1]
                 for distance in range(7, length - 6, 10):
@@ -230,13 +260,13 @@ class BoardView:
                         a, b = (start[0] + distance, start[1]), (start[0] + finish, start[1])
                     else:
                         a, b = (start[0], start[1] + distance), (start[0], start[1] + finish)
-                    pg.draw.line(surface, "#3c516b", a, b, 2)
+                    painter.line("#3c516b", a, b, 2)
 
         for row in range(self.board.rows):
             for col in range(self.board.cols):
                 point = self.point(row, col)
-                pg.draw.circle(surface, "#293c55", point, 7 if self.step > 38 else 5)
-                pg.draw.circle(surface, "#d2def0", point, 4 if self.step > 38 else 3)
+                painter.circle("#293c55", point, 7 if self.step > 38 else 5)
+                painter.circle("#d2def0", point, 4 if self.step > 38 else 3)
             x, y = self.point(row, 0)
             painter.text(str(row + 1), x - 22, y - 7, 11, DIM, align="center")
         for col in range(self.board.cols):

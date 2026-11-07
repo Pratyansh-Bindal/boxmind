@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "A local Dots and Boxes game and classical AI strategy lab"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["pygame-ce>=2.5,<3"]
+dependencies = ["pygame-ce>=2.5.2,<3"]
 
 [project.optional-dependencies]
 analysis = ["pandas>=2.2,<4", "matplotlib>=3.9,<4"]

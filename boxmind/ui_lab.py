@@ -211,7 +211,7 @@ class Lab:
             for rate, color in ((row.win_rate, MINT), (row.draw_rate, DIM), (row.loss_rate, VIOLET)):
                 width = round(rate * 128)
                 if width:
-                    pg.draw.rect(p.surface, color, (start, y + 35, width, 3))
+                    p.panel(pg.Rect(start, y + 35, width, 3), color, None, radius=0)
                     start += width
         p.panel(pg.Rect(624, 625, 584, 143), WELL, LINE)
         p.label("Report saved", 642, 644, MINT)
