@@ -1,0 +1,22 @@
+{
+  "format_version": 1,
+  "boards": [
+    [
+      3,
+      3
+    ],
+    [
+      4,
+      4
+    ]
+  ],
+  "samples": 6,
+  "seed": 311,
+  "search": {
+    "depth": 3,
+    "node_limit": 100000,
+    "time_limit_ms": null,
+    "threat_weight": 0.35
+  },
+  "environment": "Darwin 27.2.0 arm64, Python 3.12.14"
+}

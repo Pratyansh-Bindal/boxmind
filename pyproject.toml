@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "boxmind"
+version = "0.1.0"
+description = "A local Dots and Boxes game and classical AI strategy lab"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["pygame-ce>=2.5,<3"]
+
+[project.optional-dependencies]
+analysis = ["pandas>=2.2,<4", "matplotlib>=3.9,<4"]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+boxmind = "boxmind.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["boxmind*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
